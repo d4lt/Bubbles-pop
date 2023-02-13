@@ -7,13 +7,13 @@ const DELTA_TIME: f64 = 0.01;
 
 pub const BG_COLOR: Color = Color::rgb(0.144, 0.144, 0.144);
 
-pub const TOTAL_BUBBLES: u32 = 100;
+pub const MAX_BUBBLES: u32 = 15;
 
-pub const TOTAL_RADIUS: f32 = 40.0;
-pub const TOTAL_VELOCITY: f32 = 0.5;
+pub const MAX_RADIUS: f32 = 40.0;
+pub const MAX_VELOCITY: f32 = 0.75;
 
-pub const RADIUS_RANGE: std::ops::Range<f32> = 3.0..TOTAL_RADIUS;
-pub const VEL_RANGE: std::ops::RangeInclusive<f32> = -TOTAL_VELOCITY..=TOTAL_VELOCITY;
+pub const RADIUS_RANGE: std::ops::Range<f32> = 3.0..MAX_RADIUS;
+pub const VEL_RANGE: std::ops::RangeInclusive<f32> = -MAX_VELOCITY..=MAX_VELOCITY;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, StageLabel)]
 struct InteractBodies;
@@ -39,8 +39,9 @@ fn main() {
             SystemStage::single_threaded()
                 .with_run_criteria(FixedTimestep::step(DELTA_TIME))
                 .with_system(move_bubbles)
-                .with_system(interact_bubbles),
+                .with_system(interact_bubbles)
         )
+        .add_system(border_collision)
         .run();
 }
 
@@ -75,15 +76,16 @@ fn setup(
 
     let mut rng = rand::thread_rng();
 
-    for _ in 0..TOTAL_BUBBLES {
-        let position = Vec3{
+    for _ in 0..MAX_BUBBLES {
+        let position = Vec3 {
             x: rng.gen_range(-(win_w / 2.0)..=(win_w / 2.0)),
             y: rng.gen_range(-(win_h / 2.0)..=(win_h / 2.0)),
             z: 0.0,
         };
 
         let circle = meshes.add(
-            shape::Circle::new(rng.gen_range(RADIUS_RANGE)).into(), // shape::Circle::new(TOTAL_RADIUS).into()
+            shape::Circle::new(rng.gen_range(RADIUS_RANGE)).into(),
+            // shape::Circle::new(MAX_RADIUS).into()
         );
 
         commands.spawn(BubbleBundle {
@@ -104,6 +106,8 @@ fn setup(
     }
 }
 
+
+// Basic move mechanic ( to upgrade )
 fn move_bubbles(mut query: Query<(&mut Transform, &Velocity)>) {
     for (mut transform, vel) in query.iter_mut() {
         transform.translation.x += vel.x;
@@ -131,7 +135,7 @@ fn interact_bubbles(
 
         let dst = p1.distance(p2) - r1.0 - r2.0;
 
-        if dst <= 0.0 {
+        if dst <= 5.0 {
             commands.entity(entity_1).remove::<BubbleBundle>();
 
             //TODO: ABSTRACT THIS MESS
@@ -157,5 +161,31 @@ fn interact_bubbles(
                 },
             });
         }
+    }
+}
+
+fn border_collision(
+    windows: Res<Windows>,
+    mut query: Query<(&Transform, &mut Velocity, &Radius)>
+)
+{
+    let window = windows.get_primary().unwrap();
+    let (w_height, w_width) = (window.height(),window.width());
+
+    for (transform, mut vel, r) in query.iter_mut() {
+        let pos = transform.translation;
+        let radius = r.0;
+
+        let (d_right, d_left) = (pos.x + radius, pos.x - radius);
+        let (d_top, d_bottom) = (pos.y + radius, pos.y - radius);
+
+        if d_right >= w_width/2.0 || d_left <= -(w_width/2.0) {
+            vel.x = -vel.x;
+        }
+
+        if d_top >= w_height/2.0 || d_bottom <= -(w_height/2.0) {
+            vel.y = -vel.y;
+        }
+
     }
 }
